@@ -18,6 +18,7 @@ package celrenderer
 
 import (
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 
@@ -58,6 +59,18 @@ func getCelEnv(vars map[string]any) (*cel.Env, error) {
 			}),
 		),
 	))
+	opts = append(opts, cel.Function("ipplus",
+		cel.MemberOverload("ipplus",
+			[]*cel.Type{cel.StringType,
+				cel.IntType},
+			cel.StringType,
+			cel.BinaryBinding(func(str, ipIncrement ref.Val) ref.Val {
+				s := str.(types.String)
+				inc := ipIncrement.(types.Int)
+				return stringOrError(increment_ip(string(s), int(inc)))
+			}),
+		),
+	))
 	opts = append(opts, cel.Function("split",
 		cel.MemberOverload("string_split_string",
 			[]*cel.Type{cel.StringType,
@@ -76,7 +89,6 @@ func getCelEnv(vars map[string]any) (*cel.Env, error) {
 }
 
 func concat(strs traits.Lister, separator string) (string, error) {
-	fmt.Println("wimconcat")
 	sz := strs.Size().(types.Int)
 	var sb strings.Builder
 	for i := types.Int(0); i < sz; i++ {
@@ -91,6 +103,27 @@ func concat(strs traits.Lister, separator string) (string, error) {
 		sb.WriteString(string(str))
 	}
 	return sb.String(), nil
+}
+
+func increment_ip(ipStr string, inc int) (string, error) {
+	ip := net.ParseIP(ipStr).To4()
+	if ip == nil {
+		return "", fmt.Errorf("invalid IPv4 address: %s", ipStr)
+	}
+	// Convert IP to an integer
+	ipInt := (int(ip[0]) << 24) | (int(ip[1]) << 16) | (int(ip[2]) << 8) | int(ip[3])
+
+	// Add the increment
+	ipInt += inc
+
+	// Convert the integer back to an IP address
+	newIP := net.IPv4(
+		byte((ipInt>>24)&0xFF),
+		byte((ipInt>>16)&0xFF),
+		byte((ipInt>>8)&0xFF),
+		byte(ipInt&0xFF),
+	)
+	return newIP.String(), nil
 }
 
 func stringOrError(str string, err error) ref.Val {
